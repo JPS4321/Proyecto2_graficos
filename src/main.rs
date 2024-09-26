@@ -1,24 +1,27 @@
-
 mod framebuffer;
 mod ray_intersect;
-mod sphere;
+mod cube;
 mod color;
 mod camera;
 mod light;
 mod material;
+mod texture;
 
 use minifb::{ Window, WindowOptions, Key };
 use nalgebra_glm::{Vec3, normalize};
 use std::time::Duration;
 use std::f32::consts::PI;
 
+use nalgebra_glm::reflect_vec;
+
 use crate::color::Color;
 use crate::ray_intersect::{Intersect, RayIntersect};
-use crate::sphere::Sphere;
+use crate::cube::Cube;
 use crate::framebuffer::Framebuffer;
 use crate::camera::Camera;
 use crate::light::Light;
 use crate::material::Material;
+use crate::texture::load_texture;
 
 const ORIGIN_BIAS: f32 = 1e-4;
 const SKYBOX_COLOR: Color = Color::new(68, 142, 228);
@@ -32,61 +35,10 @@ fn offset_origin(intersect: &Intersect, direction: &Vec3) -> Vec3 {
     }
 }
 
-fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
-    incident - 2.0 * incident.dot(normal) * normal
-}
-
-fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
-    let cosi = -incident.dot(normal).max(-1.0).min(1.0);
-    
-    let (n_cosi, eta, n_normal);
-
-    if cosi < 0.0 {
-        n_cosi = -cosi;
-        eta = 1.0 / eta_t;
-        n_normal = -normal;
-    } else {
-        n_cosi = cosi;
-        eta = eta_t;
-        n_normal = *normal;
-    }
-    
-    let k = 1.0 - eta * eta * (1.0 - n_cosi * n_cosi);
-    
-    if k < 0.0 {
-        reflect(incident, &n_normal)
-    } else {
-        eta * incident + (eta * n_cosi - k.sqrt()) * n_normal
-    }
-}
-
-fn cast_shadow(
-    intersect: &Intersect,
-    light: &Light,
-    objects: &[Sphere],
-) -> f32 {
-    let light_dir = (light.position - intersect.point).normalize();
-    let light_distance = (light.position - intersect.point).magnitude();
-
-    let shadow_ray_origin = offset_origin(intersect, &light_dir);
-    let mut shadow_intensity = 0.0;
-
-    for object in objects {
-        let shadow_intersect = object.ray_intersect(&shadow_ray_origin, &light_dir);
-        if shadow_intersect.is_intersecting && shadow_intersect.distance < light_distance {
-            let distance_ratio = shadow_intersect.distance / light_distance;
-            shadow_intensity = 1.0 - distance_ratio.powf(2.0).min(1.0);
-            break;
-        }
-    }
-
-    shadow_intensity
-}
-
-pub fn cast_ray(
+fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
-    objects: &[Sphere],
+    objects: &[Cube], // Cambiado a cubos
     light: &Light,
     depth: u32,
 ) -> Color {
@@ -111,42 +63,29 @@ pub fn cast_ray(
 
     let light_dir = (light.position - intersect.point).normalize();
     let view_dir = (ray_origin - intersect.point).normalize();
-    let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
 
-    let shadow_intensity = cast_shadow(&intersect, light, objects);
+    let shadow_intensity = 0.0; // Simplificado, puedes agregar sombra más adelante
     let light_intensity = light.intensity * (1.0 - shadow_intensity);
 
     let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
     let diffuse = intersect.material.diffuse * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
 
-    let specular_intensity = view_dir.dot(&reflect_dir).max(0.0).powf(intersect.material.specular);
-    let specular = light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
-
     let mut reflect_color = Color::black();
     let reflectivity = intersect.material.albedo[2];
     if reflectivity > 0.0 {
-        let reflect_dir = reflect(&ray_direction, &intersect.normal).normalize();
+        let reflect_dir = reflect_vec(&ray_direction, &intersect.normal).normalize();
         let reflect_origin = offset_origin(&intersect, &reflect_dir);
         reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, light, depth + 1);
     }
 
-
-    let mut refract_color = Color::black();
-    let transparency = intersect.material.albedo[3];
-    if transparency > 0.0 {
-        let refract_dir = refract(&ray_direction, &intersect.normal, intersect.material.refractive_index);
-        let refract_origin = offset_origin(&intersect, &refract_dir);
-        refract_color = cast_ray(&refract_origin, &refract_dir, objects, light, depth + 1);
-    }
-
-    (diffuse + specular) * (1.0 - reflectivity - transparency) + (reflect_color * reflectivity) + (refract_color * transparency)
+    diffuse + reflect_color * reflectivity
 }
 
-pub fn render(framebuffer: &mut Framebuffer, objects: &[Sphere], camera: &Camera, light: &Light) {
+pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, light: &Light) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
     let aspect_ratio = width / height;
-    let fov = PI/3.0;
+    let fov = PI / 3.0;
     let perspective_scale = (fov * 0.5).tan();
 
     for y in 0..framebuffer.height {
@@ -185,51 +124,90 @@ fn main() {
         WindowOptions::default(),
     ).unwrap();
 
-    let rubber = Material::new(
-        Color::new(80, 0, 0),
-        1.0,
-        [0.9, 0.1, 0.0, 0.0],
-        0.0,
-    );
-
-    let ivory = Material::new(
-        Color::new(100, 100, 80),
+    // Material con textura para todas las caras del cubo
+    let textured_material = Material::new(
+        Color::new(255, 255, 255),  // Color base (puede ignorarse si tienes textura)
         50.0,
-        [0.6, 0.3, 0.6, 0.0],
-        0.0,
+        [0.6, 0.3, 0.0, 0.0],
+        1.0,
+        Some(load_texture("./texture/grass.png")),  // Cargar la textura para todas las caras
+        None,
+        None,
     );
 
-    let glass = Material::new(
+    // Material con textura diferente para el cubo central
+    let center_cube_material = Material::new(
         Color::new(255, 255, 255),
-        1425.0,
-        [0.0, 10.0, 0.5, 0.5],
-        0.3,
+        50.0,
+        [0.6, 0.3, 0.0, 0.0],
+        1.0,
+        Some(load_texture("./texture/water.jpeg")),  // Textura distinta para los cubos centrales
+        None,
+        None,
     );
 
-    let objects = [
-        Sphere { center: Vec3::new(0.0, 0.0, 0.0), radius: 1.0, material: rubber },
-        Sphere { center: Vec3::new(-1.0, -1.0, 1.5), radius: 0.5, material: ivory },
-        Sphere { center: Vec3::new(-0.3, 0.3, 1.5), radius: 0.3, material: glass },
-    ];
+    // Crear una cuadrícula de 5x5 cubos de tamaño 0.5
+    let mut objects = Vec::new();
+    let cube_size = 0.5;
+    let low_cube_height = 0.25;
+    let grid_size = 5;
+
+    for i in 0..grid_size {
+        for j in 0..grid_size {
+            let x_pos = i as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0; // Ajustar la posición X
+            let z_pos = j as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0; // Ajustar la posición Z
+
+            // Cubos centrales más bajos
+            if i >= 2 && i <= 3 && j >= 2 && j <= 3 {
+                objects.push(Cube {
+                    min_corner: Vec3::new(x_pos, 0.0, z_pos),
+                    max_corner: Vec3::new(x_pos + cube_size, low_cube_height, z_pos + cube_size),
+                    material: textured_material.clone(),
+                });
+            } else {
+                // Otros cubos normales
+                objects.push(Cube {
+                    min_corner: Vec3::new(x_pos, 0.0, z_pos),
+                    max_corner: Vec3::new(x_pos + cube_size, cube_size, z_pos + cube_size),
+                    material: textured_material.clone(),
+                });
+            }
+        }
+    }
+
+    // Añadir cuatro cubos más pequeños en el área central
+    for i in 2..4 {
+        for j in 2..4 {
+            let x_pos = i as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0;
+            let z_pos = j as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0;
+
+            objects.push(Cube {
+                min_corner: Vec3::new(x_pos, low_cube_height, z_pos),
+                max_corner: Vec3::new(x_pos + cube_size, cube_size, z_pos + cube_size),
+                material: center_cube_material.clone(),
+            });
+        }
+    }
 
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.0, 5.0),
+        Vec3::new(0.0, 1.5, 3.0),  // Cámara un poco más arriba para visualizar la cuadrícula
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
     );
 
     let light = Light::new(
-        Vec3::new(1.0, -1.0, 5.0),
-        Color::new(255, 255, 255),
-        1.0
+        Vec3::new(0.0, 5.0, 5.0),  // Luz desde arriba y hacia adelante
+        Color::new(255, 255, 255), // Color blanco
+        2.0                         // Aumentar la intensidad de la luz
     );
 
-    let rotation_speed = PI/10.0;
+    let rotation_speed = PI / 10.0;
+    let move_speed = 0.1;  // Velocidad de acercarse/alejarse
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-
+        // Rotación de la cámara como antes
         if window.is_key_down(Key::Left) {
-            camera.orbit(rotation_speed, 0.0); 
+            camera.orbit(rotation_speed, 0.0);
         }
 
         if window.is_key_down(Key::Right) {
@@ -244,12 +222,20 @@ fn main() {
             camera.orbit(0.0, rotation_speed);
         }
 
+        // Acercarse con la tecla 'W'
+        if window.is_key_down(Key::W) {
+            let direction = (camera.center - camera.eye).normalize(); // Dirección hacia el centro
+            camera.eye += direction * move_speed; // Mover la cámara hacia el centro
+        }
+
+        // Alejarse con la tecla 'S'
+        if window.is_key_down(Key::S) {
+            let direction = (camera.center - camera.eye).normalize(); // Dirección hacia el centro
+            camera.eye -= direction * move_speed; // Mover la cámara hacia atrás
+        }
+
         render(&mut framebuffer, &objects, &camera, &light);
-
-        window
-            .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
-            .unwrap();
-
+        window.update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height).unwrap();
         std::thread::sleep(frame_delay);
     }
-}   
+}
