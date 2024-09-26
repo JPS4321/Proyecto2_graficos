@@ -36,7 +36,7 @@ impl Material {
 
     pub fn black() -> Self {
         Material {
-            diffuse: Color::new(0, 0, 0),
+            diffuse: Color::black(),  // Usar el nuevo método black() que devuelve f32
             specular: 0.0,
             albedo: [0.0, 0.0, 0.0, 0.0],
             refractive_index: 0.0,
