@@ -39,7 +39,7 @@ fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
     objects: &[Cube],
-    lights: &[Light],  // Cambiamos a una lista de luces
+    lights: &[Light],
     depth: u32,
 ) -> Color {
     if depth > 3 {
@@ -61,9 +61,12 @@ fn cast_ray(
         return SKYBOX_COLOR;
     }
 
-    let mut final_color = Color::black();  // Color resultante acumulado
+    let mut final_color = Color::black();
 
-    // Iterar sobre cada fuente de luz
+    // Asegurarse de aplicar la emisión del material sin importar las luces
+    final_color = final_color + intersect.material.emission.unwrap_or(Color::black());
+
+    // Procesar cada luz en la escena, si hay alguna
     for light in lights {
         let light_dir = (light.position - intersect.point).normalize();
         let view_dir = (ray_origin - intersect.point).normalize();
@@ -72,7 +75,7 @@ fn cast_ray(
         let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
         let diffuse = intersect.material.diffuse * intersect.material.albedo[0] * diffuse_intensity * light.intensity;
 
-        // Reflexión (si es aplicable)
+        // Cálculo del reflejo si el material es reflectante
         let mut reflect_color = Color::black();
         let reflectivity = intersect.material.albedo[2];
         if reflectivity > 0.0 {
@@ -81,7 +84,7 @@ fn cast_ray(
             reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, lights, depth + 1);
         }
 
-        // Acumular el color final con la contribución de cada luz
+        // Combinar el color del material con el color reflejado y la iluminación difusa
         final_color = final_color + diffuse + reflect_color * reflectivity;
     }
 
@@ -141,18 +144,29 @@ fn main() {
         None,
     );
 
-    // Material con textura diferente para el cubo central
-    let center_cube_material = Material::new(
+    // Material con textura de agua para los cubos del centro
+    let water_material = Material::new(
         Color::new(1.0, 1.0, 1.0),
         50.0,
-        [0.6, 0.3, 0.0, 0.0],
+        [0.6, 0.3, 0.5, 0.0],  // Aumentamos el valor de reflectividad a 0.5
         1.0,
         Some(load_texture("./texture/water.jpeg")),
         None,
         None,
     );
 
-    // Material para la mini torre con textura de piedra
+    // Material para la mini torre con textura de calabaza (pumpkin) que emite una luz más suave
+    let pumpkin = Material::new(
+        Color::new(1.0, 1.0, 1.0),  // Color base, pero la textura lo sobreescribe
+        50.0,  // Valor especular
+        [0.6, 0.3, 0.0, 0.0],  // Albedo
+        1.0,  // Índice de refracción
+        Some(load_texture("./texture/jack.jpeg")),  // Asignar la textura que cargaste
+        None,  // Sin mapa de normales
+        Some(Color::new(0.2, 0.1, 0.0)),  // Emisión más suave con un tono anaranjado
+    );
+
+    // Material para la mini torre con textura de cobblestone
     let tower_material = Material::new(
         Color::new(1.0, 1.0, 1.0),  // Color base, pero la textura lo sobreescribe
         50.0,  // Valor especular
@@ -174,12 +188,12 @@ fn main() {
             let x_pos = i as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0;
             let z_pos = j as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0;
 
-            // Cubos centrales más bajos (reemplaza los cubos normales)
+            // Cubos centrales más bajos (agua, que reflejarán)
             if i >= 2 && i <= 3 && j >= 2 && j <= 3 {
                 objects.push(Cube {
                     min_corner: Vec3::new(x_pos, 0.0, z_pos),
                     max_corner: Vec3::new(x_pos + cube_size, low_cube_height, z_pos + cube_size),
-                    material: center_cube_material.clone(),
+                    material: water_material.clone(),  // Usar el material de agua
                 });
             } else {
                 // Otros cubos normales
@@ -192,7 +206,6 @@ fn main() {
         }
     }
 
-    // Añadir cuatro cubos más pequeños en el área central
     for i in 2..4 {
         for j in 2..4 {
             let x_pos = i as f32 * cube_size - (grid_size as f32 * cube_size) / 2.0;
@@ -201,7 +214,7 @@ fn main() {
             objects.push(Cube {
                 min_corner: Vec3::new(x_pos, low_cube_height, z_pos),  // Altura más baja
                 max_corner: Vec3::new(x_pos + cube_size, cube_size - 0.03, z_pos + cube_size),  // Más pequeños
-                material: center_cube_material.clone(),
+                material: water_material.clone(),  // Usar el material de agua con reflejos
             });
         }
     }
@@ -210,18 +223,41 @@ fn main() {
     let x_pos = 0.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
     let z_pos = 0.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
 
-    // Primer bloque de la torre (altura 0.5)
+    // Primer bloque de la torre (misma altura que el cubo base)
     objects.push(Cube {
-        min_corner: Vec3::new(x_pos, cube_size, z_pos),  // Encima del cubo base
-        max_corner: Vec3::new(x_pos + cube_size, cube_size * 1.5, z_pos + cube_size),
+        min_corner: Vec3::new(x_pos, 0.0, z_pos),  // Al nivel del piso
+        max_corner: Vec3::new(x_pos + cube_size, cube_size, z_pos + cube_size),  // Mismo tamaño que los bloques del piso
         material: tower_material.clone(),  // Usar la textura de piedra
     });
 
-    // Segundo bloque de la torre (altura 0.5)
+    // Segundo bloque de la torre (encima del primero, del mismo tamaño)
     objects.push(Cube {
-        min_corner: Vec3::new(x_pos, cube_size * 1.5, z_pos),  // Encima del primer bloque
+        min_corner: Vec3::new(x_pos, cube_size, z_pos),  // Encima del primer bloque
         max_corner: Vec3::new(x_pos + cube_size, cube_size * 2.0, z_pos + cube_size),
         material: tower_material.clone(),  // Usar la textura de piedra
+    });
+
+    // Tercer bloque de la torre (encima del segundo bloque)
+    objects.push(Cube {
+        min_corner: Vec3::new(x_pos, cube_size * 2.0, z_pos),  // Encima del segundo bloque
+        max_corner: Vec3::new(x_pos + cube_size, cube_size * 3.0, z_pos + cube_size),
+        material: tower_material.clone(),  // Usar la textura de piedra
+    });
+
+    // Cuarto bloque de la torre (encima del tercer bloque)
+    objects.push(Cube {
+        min_corner: Vec3::new(x_pos, cube_size * 3.0, z_pos),  // Encima del tercer bloque
+        max_corner: Vec3::new(x_pos + cube_size, cube_size * 4.0, z_pos + cube_size),
+        material: pumpkin.clone(),  // Usar la textura de piedra
+    });
+
+    // Agregar bloques de pumpkin con emisión de luz
+    let pumpkin_x = 1.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
+    let pumpkin_z = 1.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
+    objects.push(Cube {
+        min_corner: Vec3::new(pumpkin_x, 0.0, pumpkin_z),  // Encima del piso
+        max_corner: Vec3::new(pumpkin_x + cube_size, cube_size, pumpkin_z + cube_size),  // Mismo tamaño
+        material: pumpkin.clone(),  // Usar la textura pumpkin
     });
 
     let mut camera = Camera::new(
@@ -232,19 +268,19 @@ fn main() {
 
     // Añadir dos luces
     let light1 = Light::new(
-        Vec3::new(0.0, 5.0, 5.0),  // Primera luz (como ya existe)
+        Vec3::new(0.0, 5.0, 5.0),  // Primera luz
         Color::new(1.0, 1.0, 1.0),  // Luz blanca
         2.0,  // Intensidad
     );
 
     let light2 = Light::new(
-        Vec3::new(0.0, 5.0, -5.0),  // Segunda luz en el lado opuesto
-        Color::new(1.0, 0.5, 0.5),  // Luz con un tono rojizo
-        1.5,  // Intensidad un poco menor
+        Vec3::new(0.0, 5.0, -5.0),  
+        Color::new(1.0, 0.5, 0.5),  
+        1.5,  
     );
 
-    // Guardamos ambas luces en un vector
-    let lights = vec![light1, light2];
+    let mut lights = vec![light1.clone(), light2.clone()];
+    let mut lights_on = true;  
 
     let rotation_speed = PI / 10.0;
     let move_speed = 0.1;
@@ -275,6 +311,16 @@ fn main() {
             let direction = (camera.center - camera.eye).normalize();
             camera.eye -= direction * move_speed;
         }
+
+        if window.is_key_pressed(Key::R, minifb::KeyRepeat::No) {
+            lights_on = !lights_on;
+            if lights_on {
+                lights = vec![light1.clone(), light2.clone()];  
+            } else {
+                lights.clear();  // Apagar las luces 1 y 2
+            }
+        }
+        
 
         render(&mut framebuffer, &objects, &camera, &lights);
         window.update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height).unwrap();
