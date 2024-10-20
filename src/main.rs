@@ -161,7 +161,7 @@ fn main() {
         50.0,  // Valor especular
         [0.6, 0.3, 0.0, 0.0],  // Albedo
         1.0,  // Índice de refracción
-        Some(load_texture("./texture/jack.jpeg")),  // Asignar la textura que cargaste
+        Some(load_texture("./texture/jack.jpeg")), 
         None,  // Sin mapa de normales
         Some(Color::new(0.2, 0.1, 0.0)),  // Emisión más suave con un tono anaranjado
     );
@@ -172,12 +172,11 @@ fn main() {
         50.0,  // Valor especular
         [0.6, 0.3, 0.0, 0.0],  // Albedo
         1.0,  // Índice de refracción
-        Some(load_texture("./texture/cobble.png")),  // Asignar la textura que cargaste
+        Some(load_texture("./texture/cobble.png")),  
         None,  // Sin mapa de normales
         None,  // Sin emisión
     );
 
-    // Crear una cuadrícula de 5x5 cubos de tamaño 0.5
     let mut objects = Vec::new();
     let cube_size = 0.5;
     let low_cube_height = 0.25;

@@ -11,7 +11,6 @@ pub struct Cube {
 
 impl RayIntersect for Cube {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect {
-        // Calcular tmin y tmax para cada eje (x, y, z)
         let mut tmin = (self.min_corner.x - ray_origin.x) / ray_direction.x;
         let mut tmax = (self.max_corner.x - ray_origin.x) / ray_direction.x;
         if tmin > tmax {
@@ -52,22 +51,17 @@ impl RayIntersect for Cube {
             tmax = tzmax;
         }
 
-        // Si el valor de tmin es negativo, no hay intersección delante del rayo
         if tmin < 0.0 {
             return Intersect::empty();
         }
 
-        // Calcular el punto de intersección
         let intersection_point = ray_origin + ray_direction * tmin;
 
-        // Calcular la normal de la intersección
         let mut normal = self.calculate_normal(&intersection_point);
         let (u, v) = self.get_texture_coordinates(&intersection_point);
         let distance = tmin;
 
-        // Obtener el color de la textura si está disponible
-        let texture_color = if let Some(texture) = &self.material.texture {
-            // Normalizar colores dividiendo por 255.0
+        let texture_color: Color = if let Some(texture) = &self.material.texture {
             let u_clamped = u.clamp(0.0, 1.0 - f32::EPSILON);
             let v_clamped = v.clamp(0.0, 1.0 - f32::EPSILON);
         
@@ -77,7 +71,6 @@ impl RayIntersect for Cube {
             let pixel = texture.get_pixel(tex_x, tex_y);
             Color::new(pixel[0] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[2] as f32 / 255.0)
         } else {
-            // Si no hay textura o el cálculo falla, aplica un color gris como fallback
             Color::new(0.5, 0.5, 0.5)  // Color gris
         };
         
@@ -99,7 +92,6 @@ impl RayIntersect for Cube {
             )
             .normalize();
 
-            // Asumir que la normal calculada ya actúa como la base para ajustar
             let tangent = normal.cross(&Vec3::new(0.0, 1.0, 0.0)).normalize();
             let bitangent = normal.cross(&tangent);
 
@@ -132,32 +124,26 @@ impl Cube {
         let epsilon = 1e-4;
     
         if (point.x - self.min_corner.x).abs() < epsilon {
-            // Cara izquierda (eje X negativo)
             let u = (point.z - self.min_corner.z) / (self.max_corner.z - self.min_corner.z);
             let v = (self.max_corner.y - point.y) / (self.max_corner.y - self.min_corner.y); 
             (u, v)
         } else if (point.x - self.max_corner.x).abs() < epsilon {
-            // Cara derecha (eje X positivo)
             let u = (point.z - self.min_corner.z) / (self.max_corner.z - self.min_corner.z);
             let v = (self.max_corner.y - point.y) / (self.max_corner.y - self.min_corner.y); 
             (u, v)
         } else if (point.y - self.min_corner.y).abs() < epsilon {
-            // Cara inferior (eje Y negativo)
             let u = (point.x - self.min_corner.x) / (self.max_corner.x - self.min_corner.x);
             let v = (point.z - self.min_corner.z) / (self.max_corner.z - self.min_corner.z);
             (u, v)
         } else if (point.y - self.max_corner.y).abs() < epsilon {
-            // Cara superior (eje Y positivo) - Ya funciona bien
             let u = (point.x - self.min_corner.x) / (self.max_corner.x - self.min_corner.x);
             let v = (point.z - self.min_corner.z) / (self.max_corner.z - self.min_corner.z);
             (u, v)
         } else if (point.z - self.min_corner.z).abs() < epsilon {
-            // Cara trasera (eje Z negativo)
             let u = (self.max_corner.x - point.x) / (self.max_corner.x - self.min_corner.x);
             let v = (self.max_corner.y - point.y) / (self.max_corner.y - self.min_corner.y);
             (u, v)
         } else {
-            // Cara frontal (eje Z positivo) - Ya funciona bien
             let u = (point.x - self.min_corner.x) / (self.max_corner.x - self.min_corner.x);
             let v = (self.max_corner.y - point.y) / (self.max_corner.y - self.min_corner.y);
             (u, v)
