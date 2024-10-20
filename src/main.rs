@@ -63,7 +63,6 @@ fn cast_ray(
 
     let mut final_color = Color::black();
 
-    // Asegurarse de aplicar la emisión del material sin importar las luces
     final_color = final_color + intersect.material.emission.unwrap_or(Color::black());
 
     // Procesar cada luz en la escena, si hay alguna
@@ -71,11 +70,9 @@ fn cast_ray(
         let light_dir = (light.position - intersect.point).normalize();
         let view_dir = (ray_origin - intersect.point).normalize();
 
-        // Cálculo de la intensidad difusa
         let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
         let diffuse = intersect.material.diffuse * intersect.material.albedo[0] * diffuse_intensity * light.intensity;
 
-        // Cálculo del reflejo si el material es reflectante
         let mut reflect_color = Color::black();
         let reflectivity = intersect.material.albedo[2];
         if reflectivity > 0.0 {
@@ -84,7 +81,6 @@ fn cast_ray(
             reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, lights, depth + 1);
         }
 
-        // Combinar el color del material con el color reflejado y la iluminación difusa
         final_color = final_color + diffuse + reflect_color * reflectivity;
     }
 
@@ -162,7 +158,7 @@ fn main() {
         [0.6, 0.3, 0.0, 0.0],  // Albedo
         1.0,  // Índice de refracción
         Some(load_texture("./texture/jack.jpeg")), 
-        None,  // Sin mapa de normales
+        None,  
         Some(Color::new(0.2, 0.1, 0.0)),  // Emisión más suave con un tono anaranjado
     );
 
@@ -173,8 +169,8 @@ fn main() {
         [0.6, 0.3, 0.0, 0.0],  // Albedo
         1.0,  // Índice de refracción
         Some(load_texture("./texture/cobble.png")),  
-        None,  // Sin mapa de normales
-        None,  // Sin emisión
+        None,  
+        None,  
     );
 
     let mut objects = Vec::new();
@@ -218,45 +214,39 @@ fn main() {
         }
     }
 
-    // Posicionar la torre en la esquina superior izquierda de la cuadrícula
     let x_pos = 0.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
     let z_pos = 0.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
 
-    // Primer bloque de la torre (misma altura que el cubo base)
     objects.push(Cube {
         min_corner: Vec3::new(x_pos, 0.0, z_pos),  // Al nivel del piso
         max_corner: Vec3::new(x_pos + cube_size, cube_size, z_pos + cube_size),  // Mismo tamaño que los bloques del piso
         material: tower_material.clone(),  // Usar la textura de piedra
     });
 
-    // Segundo bloque de la torre (encima del primero, del mismo tamaño)
     objects.push(Cube {
         min_corner: Vec3::new(x_pos, cube_size, z_pos),  // Encima del primer bloque
         max_corner: Vec3::new(x_pos + cube_size, cube_size * 2.0, z_pos + cube_size),
         material: tower_material.clone(),  // Usar la textura de piedra
     });
 
-    // Tercer bloque de la torre (encima del segundo bloque)
     objects.push(Cube {
         min_corner: Vec3::new(x_pos, cube_size * 2.0, z_pos),  // Encima del segundo bloque
         max_corner: Vec3::new(x_pos + cube_size, cube_size * 3.0, z_pos + cube_size),
         material: tower_material.clone(),  // Usar la textura de piedra
     });
 
-    // Cuarto bloque de la torre (encima del tercer bloque)
     objects.push(Cube {
         min_corner: Vec3::new(x_pos, cube_size * 3.0, z_pos),  // Encima del tercer bloque
         max_corner: Vec3::new(x_pos + cube_size, cube_size * 4.0, z_pos + cube_size),
         material: pumpkin.clone(),  // Usar la textura de piedra
     });
 
-    // Agregar bloques de pumpkin con emisión de luz
     let pumpkin_x = 1.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
     let pumpkin_z = 1.0 * cube_size - (grid_size as f32 * cube_size) / 2.0;
     objects.push(Cube {
-        min_corner: Vec3::new(pumpkin_x, 0.0, pumpkin_z),  // Encima del piso
-        max_corner: Vec3::new(pumpkin_x + cube_size, cube_size, pumpkin_z + cube_size),  // Mismo tamaño
-        material: pumpkin.clone(),  // Usar la textura pumpkin
+        min_corner: Vec3::new(pumpkin_x, 0.0, pumpkin_z),  
+        max_corner: Vec3::new(pumpkin_x + cube_size, cube_size, pumpkin_z + cube_size),  
+        material: pumpkin.clone(),  
     });
 
     let mut camera = Camera::new(
@@ -265,11 +255,10 @@ fn main() {
         Vec3::new(0.0, 1.0, 0.0),
     );
 
-    // Añadir dos luces
     let light1 = Light::new(
-        Vec3::new(0.0, 5.0, 5.0),  // Primera luz
-        Color::new(1.0, 1.0, 1.0),  // Luz blanca
-        2.0,  // Intensidad
+        Vec3::new(0.0, 5.0, 5.0),  
+        Color::new(1.0, 1.0, 1.0),  
+        2.0,  
     );
 
     let light2 = Light::new(
@@ -316,7 +305,7 @@ fn main() {
             if lights_on {
                 lights = vec![light1.clone(), light2.clone()];  
             } else {
-                lights.clear();  // Apagar las luces 1 y 2
+                lights.clear();  
             }
         }
         
